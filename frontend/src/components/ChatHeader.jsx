@@ -31,9 +31,7 @@ function ChatHeader() {
           <h3 className="text-slate-200 font-medium">
             {selectedUser.fullName}
           </h3>
-          <p text-slate-400 text-sm>
-            Online
-          </p>
+          <p className="text-slate-400 text-sm">Online</p>
         </div>
       </div>
       <button onClick={() => setSelectedUser(null)}>
