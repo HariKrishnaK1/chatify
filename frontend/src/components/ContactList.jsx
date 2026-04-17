@@ -37,7 +37,7 @@ function ContactList() {
       {filteredContacts.map((contact) => (
         <div
           key={contact._id}
-          className="bg-cyan-500/10 p-4 rounded-lg cursor-pointer hover:bg-cyan-500/20 transition-colors"
+          className="bg-cyan-500/10 p-3 sm:p-4 rounded-lg cursor-pointer hover:bg-cyan-500/20 transition-colors"
           onClick={() => setSelectedUser(contact)}
         >
           <div className="flex items-center gap-3">
@@ -46,7 +46,7 @@ function ContactList() {
                 onlineUsers.includes(contact._id) ? "online" : ""
               }`}
             >
-              <div className="size-12 rounded-full">
+              <div className="size-10 sm:size-12 rounded-full">
                 <img src={contact.profilePic || "/avatar.png"} />
               </div>
             </div>

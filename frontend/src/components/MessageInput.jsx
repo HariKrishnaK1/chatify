@@ -63,7 +63,9 @@ function MessageInput() {
     // clear typing & drafts when sent
     clearTimeout(typingTimeoutRef.current);
     setIsTyping(false);
-    socket?.emit("stopTyping", { receiverId: selectedUser._id });
+    if (selectedUser?._id) {
+       socket?.emit("stopTyping", { receiverId: selectedUser._id });
+    }
 
     setText("");
     setDraft(selectedUser._id, "");
@@ -75,7 +77,7 @@ function MessageInput() {
     updateLocalText(e.target.value);
     if (isSoundEnabled) playRandomKeyStrokeSound();
 
-    if (!isTyping) {
+    if (!isTyping && selectedUser?._id) {
       setIsTyping(true);
       socket?.emit("typing", { receiverId: selectedUser._id });
     }
@@ -84,7 +86,9 @@ function MessageInput() {
 
     typingTimeoutRef.current = setTimeout(() => {
       setIsTyping(false);
-      socket?.emit("stopTyping", { receiverId: selectedUser._id });
+      if (selectedUser?._id) {
+         socket?.emit("stopTyping", { receiverId: selectedUser._id });
+      }
     }, 2000);
   };
 
@@ -109,7 +113,7 @@ function MessageInput() {
   };
 
   return (
-    <div className="p-4 border-t border-slate-700/50 relative">
+    <div className="p-2 sm:p-4 border-t border-slate-700/50 relative">
       {replyingTo && (
         <div className="max-w-3xl mx-auto mb-3 flex items-center justify-between bg-slate-800/80 border border-slate-700/50 rounded-lg p-2.5">
           <div className="flex flex-col overflow-hidden border-l-4 border-cyan-500 pl-3">
@@ -143,7 +147,7 @@ function MessageInput() {
 
       <form
         onSubmit={handleSendMessage}
-        className="max-w-3xl mx-auto flex items-center space-x-2 sm:space-x-4 h-12"
+        className="max-w-3xl mx-auto flex items-center space-x-2 h-10 sm:h-12"
       >
         <div className="relative h-full" ref={emojiPickerRef}>
           <button
@@ -153,7 +157,7 @@ function MessageInput() {
               showEmojiPicker ? "text-cyan-400" : ""
             }`}
           >
-            <SmileIcon className="w-5 h-5" />
+            <SmileIcon className="w-[18px] h-[18px] sm:w-5 sm:h-5" />
           </button>
 
           {showEmojiPicker && (
@@ -191,7 +195,7 @@ function MessageInput() {
             imagePreview ? "text-cyan-400" : ""
           }`}
         >
-          <ImageIcon className="w-5 h-5" />
+          <ImageIcon className="w-[18px] h-[18px] sm:w-5 sm:h-5" />
         </button>
         
         <button
@@ -199,7 +203,7 @@ function MessageInput() {
           disabled={!text.trim() && !imagePreview}
           className="bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-lg px-4 h-full font-medium hover:from-cyan-600 hover:to-cyan-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
         >
-          <SendIcon className="w-5 h-5" />
+          <SendIcon className="w-[18px] h-[18px] sm:w-5 sm:h-5" />
         </button>
       </form>
     </div>

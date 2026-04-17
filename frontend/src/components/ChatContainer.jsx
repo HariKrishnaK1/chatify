@@ -23,6 +23,7 @@ function ChatContainer() {
     page,
     hasMoreMessages,
     setReplyingTo,
+    markMessagesAsRead,
   } = useChatStore();
   const { authUser } = useAuthStore();
   const messageEndRef = useRef(null);
@@ -61,15 +62,19 @@ function ChatContainer() {
   }, [selectedUser?._id]);
 
   useEffect(() => {
-    getMessagesByUserId(selectedUser._id);
-    subscribeToMessages();
+    if (selectedUser?._id) {
+      getMessagesByUserId(selectedUser._id);
+      subscribeToMessages();
+      markMessagesAsRead(selectedUser._id);
+    }
 
     return () => unsubscribeFromMessages();
   }, [
-    selectedUser._id,
+    selectedUser?._id,
     getMessagesByUserId,
     subscribeToMessages,
     unsubscribeFromMessages,
+    markMessagesAsRead,
   ]);
 
   useEffect(() => {
@@ -137,7 +142,7 @@ function ChatContainer() {
   return (
     <div className="relative flex-1 flex flex-col overflow-hidden">
       {isSelecting ? (
-        <div className="flex justify-between items-center bg-cyan-900/40 border-b border-cyan-800/50 shrink-0 h-20 px-6">
+        <div className="flex justify-between items-center bg-cyan-900/40 border-b border-cyan-800/50 shrink-0 h-16 sm:h-20 px-4 sm:px-6">
           <div className="flex items-center gap-4">
             <button onClick={() => setIsSelecting(false)} className="text-slate-300 hover:text-white p-2">
               <X className="w-5 h-5" />
@@ -168,7 +173,7 @@ function ChatContainer() {
       <div 
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 px-6 overflow-y-auto py-8 relative scrollbar-hide"
+        className="flex-1 px-3 sm:px-6 overflow-y-auto py-4 sm:py-8 relative scrollbar-hide"
       >
         {isMessagesLoading && page > 1 && (
            <div className="flex justify-center my-4"><span className="loading loading-spinner loading-sm text-cyan-500"></span></div>
@@ -255,9 +260,9 @@ function ChatContainer() {
                         {msg.senderId === authUser._id && msg.text !== "This message was deleted" && (
                           <span>
                             {msg.read ? (
-                              <CheckCheck className="w-[14px] h-[14px] text-cyan-200" />
+                              <CheckCheck className="w-[14px] h-[14px] text-emerald-400" />
                             ) : (
-                              <Check className="w-[14px] h-[14px] text-slate-300" />
+                              <Check className="w-[14px] h-[14px] text-slate-400" />
                             )}
                           </span>
                         )}

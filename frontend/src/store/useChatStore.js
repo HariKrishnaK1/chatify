@@ -96,7 +96,8 @@ export const useChatStore = create((set, get) => ({
     }));
 
     try {
-      const payload = { ...messageData, replyTo: replyingTo?._id };
+      const socket = useAuthStore.getState().socket;
+      const payload = { ...messageData, replyTo: replyingTo?._id, socketId: socket?.id };
       const res = await axiosInstance.post(
         `/message/send/${selectedUser._id}`,
         payload
@@ -126,15 +127,29 @@ export const useChatStore = create((set, get) => ({
 
   markMessagesAsRead: async (senderId) => {
     try {
-      await axiosInstance.put(`/message/read/${senderId}`);
-      // Optimistically update UI
-      set((state) => ({
-        messages: state.messages.map((msg) =>
-          msg.senderId === senderId && !msg.read ? { ...msg, read: true } : msg
-        ),
-      }));
-      // Emit socket event to notify sender
       const socket = useAuthStore.getState().socket;
+      await axiosInstance.put(`/message/read/${senderId}`, { socketId: socket?.id });
+      // Optimistically update UI
+      set((state) => {
+        const newMessages = state.messages.map((msg) =>
+          msg.senderId === senderId && !msg.read ? { ...msg, read: true } : msg
+        );
+
+        const newChats = state.chats.map((chat) => {
+          if (chat._id === senderId) {
+            return {
+              ...chat,
+              unreadCount: 0,
+              lastMessage: chat.lastMessage ? { ...chat.lastMessage, read: true } : chat.lastMessage
+            };
+          }
+          return chat;
+        });
+
+        return { messages: newMessages, chats: newChats };
+      });
+
+      // Emit socket event to notify sender
       socket.emit("messagesRead", { senderId });
     } catch (error) {
       console.error(error);
@@ -201,22 +216,39 @@ export const useChatStore = create((set, get) => ({
     const socket = useAuthStore.getState().socket;
 
     socket.on("newMessage", (newMessage) => {
+      const { authUser } = useAuthStore.getState();
       const isSoundEnabled = get().isSoundEnabled;
 
       set((state) => {
+        // Match if it's from the selected partner OR if it's from ME to the selected partner (other tab sync)
         const isFromSelected = newMessage.senderId === state.selectedUser?._id;
+        const isFromMeToSelected = newMessage.senderId === authUser?._id && newMessage.receiverId === state.selectedUser?._id;
         
+        // Update sidebar "last message" AND increment unreadCount if not active
+        const partnerId = newMessage.senderId === authUser?._id ? newMessage.receiverId : newMessage.senderId;
         const newChats = [...state.chats];
-        const chatIndex = newChats.findIndex(c => c._id === newMessage.senderId);
+        const chatIndex = newChats.findIndex(c => c._id === partnerId);
+        
         if (chatIndex !== -1) {
-          const chatToUpdate = { ...newChats[chatIndex], lastMessage: newMessage };
+          const chatToUpdate = { 
+            ...newChats[chatIndex], 
+            lastMessage: newMessage,
+            unreadCount: !isFromSelected && newMessage.senderId !== authUser?._id 
+              ? (newChats[chatIndex].unreadCount || 0) + 1 
+              : (newChats[chatIndex].unreadCount || 0)
+          };
           newChats.splice(chatIndex, 1);
           newChats.unshift(chatToUpdate);
         }
         
-        const newMessages = isFromSelected ? [...state.messages, newMessage] : state.messages;
+        // Prevent duplicates (optimistic messages vs socket messages)
+        const isDuplicate = state.messages.some(msg => msg._id === newMessage._id);
+        
+        const newMessages = (isFromSelected || isFromMeToSelected) && !isDuplicate 
+          ? [...state.messages, newMessage] 
+          : state.messages;
 
-        // Mark as read immediately if chat is open
+        // Mark as read message immediately if chat is open AND it's from the partner
         if (isFromSelected) {
           setTimeout(() => get().markMessagesAsRead(newMessage.senderId), 0);
         }
@@ -224,13 +256,11 @@ export const useChatStore = create((set, get) => ({
         return { chats: newChats, messages: newMessages };
       });
 
-      if (isSoundEnabled) {
+      // Only play sound for INCOMING messages, not self-syncs
+      if (isSoundEnabled && newMessage.senderId !== authUser?._id) {
         const notificationSound = new Audio("/sounds/notification.mp3");
-
-        notificationSound.currentTime = 0; // reset to start
-        notificationSound
-          .play()
-          .catch((e) => console.log("Audio play failed:", e));
+        notificationSound.currentTime = 0;
+        notificationSound.play().catch((e) => console.log("Audio play failed:", e));
       }
     });
 
@@ -245,12 +275,25 @@ export const useChatStore = create((set, get) => ({
     });
 
     socket.on("messagesRead", ({ readerId }) => {
-      if (readerId === selectedUser._id) {
-        set((state) => ({
-          messages: state.messages.map((msg) =>
+      const { authUser } = useAuthStore.getState();
+      if (readerId === selectedUser?._id) {
+        set((state) => {
+          const newMessages = state.messages.map((msg) =>
             msg.receiverId === readerId ? { ...msg, read: true } : msg
-          ),
-        }));
+          );
+
+          const newChats = state.chats.map((chat) => {
+            if (chat._id === readerId && chat.lastMessage && chat.lastMessage.senderId === authUser?._id) {
+              return {
+                ...chat,
+                lastMessage: { ...chat.lastMessage, read: true }
+              };
+            }
+            return chat;
+          });
+
+          return { messages: newMessages, chats: newChats };
+        });
       }
     });
 

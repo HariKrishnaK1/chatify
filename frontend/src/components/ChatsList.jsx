@@ -35,7 +35,7 @@ function ChatsList() {
       {filteredChats.map((chat) => (
         <div
           key={chat._id}
-          className="bg-cyan-500/10 p-4 rounded-lg cursor-pointer hover:bg-cyan-500/20 transition-colors"
+          className="bg-cyan-500/10 p-3 sm:p-4 rounded-lg cursor-pointer hover:bg-cyan-500/20 transition-colors"
           onClick={() => setSelectedUser(chat)}
         >
           <div className="flex items-center gap-3">
@@ -44,7 +44,7 @@ function ChatsList() {
                 onlineUsers.includes(chat._id) ? "online" : ""
               }`}
             >
-              <div className="size-12 rounded-full">
+              <div className="size-10 sm:size-12 rounded-full">
                 <img
                   src={chat.profilePic || "/avatar.png"}
                   alt={chat.fullName}
@@ -52,15 +52,22 @@ function ChatsList() {
               </div>
             </div>
             <div className="flex-1 min-w-0">
-              <h4 className="text-slate-200 font-medium truncate">
-                {chat.fullName}
-              </h4>
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-slate-200 font-medium truncate">
+                  {chat.fullName}
+                </h4>
+                {chat.unreadCount > 0 && (
+                  <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold text-white bg-emerald-500 rounded-full animate-in zoom-in duration-300">
+                    {chat.unreadCount}
+                  </span>
+                )}
+              </div>
               {typingUsers.includes(chat._id) ? (
                 <p className="text-sm font-medium text-green-400 animate-pulse mt-0.5">
                   Typing...
                 </p>
               ) : chat.lastMessage && (
-                <p className={`text-sm truncate mt-0.5 ${chat.lastMessage.read || chat.lastMessage.senderId !== authUser._id ? "text-slate-400" : "text-slate-300 font-medium"}`}>
+                <p className={`text-sm truncate mt-0.5 ${chat.unreadCount > 0 ? "text-slate-100 font-bold" : "text-slate-400 font-normal"}`}>
                   {chat.lastMessage.senderId === authUser._id && "You: "}
                   {chat.lastMessage.image ? "📷 Photo" : chat.lastMessage.text}
                 </p>

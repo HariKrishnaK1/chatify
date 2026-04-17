@@ -66,69 +66,11 @@ const signup = async (req, res) => {
 };
 
 const verifyEmail = async (req, res) => {
-  const { email, code } = req.body;
-
-  try {
-    const user = await User.findOne({
-      email,
-      verificationCode: code,
-      verificationCodeExpiresAt: { $gt: Date.now() },
-    });
-
-    if (!user) {
-      return res.status(400).json({ message: "Invalid or expired verification code" });
-    }
-
-    user.isVerified = true;
-    user.verificationCode = undefined;
-    user.verificationCodeExpiresAt = undefined;
-    await user.save();
-
-    generateToken(user._id, res);
-
-    res.status(200).json({
-      _id: user._id,
-      fullName: user.fullName,
-      email: user.email,
-      profilePic: user.profilePic,
-    });
-
-    // Send welcome email after verification
-    try {
-      await sendWelcomeEmail(user.email, user.fullName, ENV.CLIENT_URL);
-    } catch (error) {
-       console.log("Welcome email failed after verification:", error);
-    }
-  } catch (error) {
-    console.log("Error in verifyEmail controller:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
+  res.status(200).json({ message: "Verification completed (Bypassed)" });
 };
 
 const resendOTP = async (req, res) => {
-  const { email } = req.body;
-
-  try {
-    const user = await User.findOne({ email, isVerified: false });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found or already verified" });
-    }
-
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const verificationCodeExpiresAt = Date.now() + 15 * 60 * 1000;
-
-    user.verificationCode = verificationCode;
-    user.verificationCodeExpiresAt = verificationCodeExpiresAt;
-    await user.save();
-
-    await sendVerificationEmail(user.email, verificationCode);
-
-    res.status(200).json({ message: "New verification code sent" });
-  } catch (error) {
-    console.log("Error in resendOTP controller:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
+  res.status(200).json({ message: "OTP system is currently disabled." });
 };
 
 const login = async (req, res) => {

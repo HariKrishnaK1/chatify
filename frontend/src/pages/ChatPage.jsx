@@ -14,7 +14,7 @@ function ChatPage() {
   const { activeTab, selectedUser, searchTerm, setSearchTerm } = useChatStore();
   const [showMyProfile, setShowMyProfile] = useState(false);
   return (
-    <div className="relative w-full max-w-6xl h-[100vh] sm:h-[calc(100vh-6rem)] sm:min-h-[700px] shadow-2xl rounded-none sm:rounded-2xl overflow-hidden">
+    <div className="relative w-full max-w-6xl h-screen sm:h-[calc(100vh-6rem)] sm:min-h-[700px] shadow-2xl rounded-none sm:rounded-2xl overflow-hidden">
       <BorderAnimatedContainer>
         {/* LEFT SIDE */}
         <div className={`w-full md:w-80 bg-slate-800/50 backdrop-blur-sm flex-col relative transition-all duration-300 ${selectedUser ? 'hidden md:flex' : 'flex'}`}>

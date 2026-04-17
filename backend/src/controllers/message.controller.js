@@ -84,10 +84,21 @@ export const sendMessage = async (req, res) => {
       await newMessage.populate("replyTo", "text image senderId");
     }
 
-    //todo: send message in real time if user is online -socket.io
-    const receiverSocketId = getReceiverSocketId(receiverId);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("newMessage", newMessage);
+    // todo: send message in real time to receiver AND other sender tabs
+    const { socketId } = req.body;
+    const receiverRoom = getReceiverSocketId(receiverId);
+    if (receiverRoom) {
+      io.to(receiverRoom).emit("newMessage", newMessage);
+    }
+    
+    // Also notify sender's other tabs
+    const senderRoom = getReceiverSocketId(senderId);
+    if (senderRoom) {
+      if (socketId) {
+        io.to(senderRoom).except(socketId).emit("newMessage", newMessage);
+      } else {
+        io.to(senderRoom).emit("newMessage", newMessage);
+      }
     }
 
     res.status(201).json(newMessage);
@@ -108,6 +119,7 @@ export const getChatPartners = async (req, res) => {
 
     const chatPartnerIds = [];
     const latestMessageMap = {};
+    const unreadCountMap = {};
 
     messages.forEach((msg) => {
       const partnerId =
@@ -119,19 +131,25 @@ export const getChatPartners = async (req, res) => {
         chatPartnerIds.push(partnerId);
         latestMessageMap[partnerId] = msg;
       }
+
+      // Track unread count (if from partner to me and unread)
+      if (msg.senderId.toString() === partnerId && msg.receiverId.toString() === loggedInUserId.toString() && !msg.read) {
+        unreadCountMap[partnerId] = (unreadCountMap[partnerId] || 0) + 1;
+      }
     });
 
     const chatPartners = await User.find({
       _id: { $in: chatPartnerIds },
     }).select("-password");
     
-    // Sort chatPartners based on the order of chatPartnerIds (latest first) and inject last message
+    // Sort chatPartners based on the order of chatPartnerIds (latest first) and inject last message & unreadCount
     const sortedChatPartners = chatPartnerIds.map(id => {
       const user = chatPartners.find(p => p._id.toString() === id);
       if (user) {
         return {
           ...user.toObject(),
-          lastMessage: latestMessageMap[id]
+          lastMessage: latestMessageMap[id],
+          unreadCount: unreadCountMap[id] || 0
         };
       }
       return null;
@@ -155,9 +173,24 @@ export const markMessagesAsRead = async (req, res) => {
     );
 
     if (modified.modifiedCount > 0) {
-      const senderSocketId = getReceiverSocketId(senderId);
-      if (senderSocketId) {
-        io.to(senderSocketId).emit("messagesRead", { readerId: myId });
+      const { socketId } = req.body;
+      const senderRoom = getReceiverSocketId(senderId);
+      if (senderRoom) {
+        if (socketId) {
+           io.to(senderRoom).except(socketId).emit("messagesRead", { readerId: myId });
+        } else {
+           io.to(senderRoom).emit("messagesRead", { readerId: myId });
+        }
+      }
+      
+      // Also notify reader's other tabs to turn ticks green
+      const myRoom = getReceiverSocketId(myId);
+      if (myRoom) {
+        if (socketId) {
+           io.to(myRoom).except(socketId).emit("messagesRead", { readerId: myId });
+        } else {
+           io.to(myRoom).emit("messagesRead", { readerId: myId });
+        }
       }
     }
 
