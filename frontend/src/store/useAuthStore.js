@@ -11,6 +11,9 @@ export const useAuthStore = create((set, get) => ({
   isCheckingAuth: true,
   isSigningUp: false,
   isLoggingIn: false,
+  isVerifyingEmail: false,
+  needsVerification: false,
+  tempEmail: null,
   socket: null,
   onlineUsers: [],
 
@@ -32,7 +35,6 @@ export const useAuthStore = create((set, get) => ({
     try {
       const res = await axiosInstance.post("/auth/signup", data);
       set({ authUser: res.data });
-
       toast.success("Account created successfully");
       get().connectSocket();
     } catch (error) {
@@ -42,14 +44,42 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
+  verifyEmail: async (code) => {
+    set({ isVerifyingEmail: true });
+    try {
+      const res = await axiosInstance.post("/auth/verify-email", { 
+        email: get().tempEmail, 
+        code 
+      });
+      set({ authUser: res.data, needsVerification: false, tempEmail: null });
+      toast.success("Email verified successfully!");
+      get().connectSocket();
+      return true;
+    } catch (error) {
+      toast.error(error.response.data.message);
+      return false;
+    } finally {
+      set({ isVerifyingEmail: false });
+    }
+  },
+
+  resendOTP: async () => {
+    try {
+      const res = await axiosInstance.post("/auth/resend-otp", { 
+        email: get().tempEmail 
+      });
+      toast.success(res.data.message);
+    } catch (error) {
+      toast.error(error.response.data.message);
+    }
+  },
+
   login: async (data) => {
     set({ isLoggingIn: true });
     try {
       const res = await axiosInstance.post("/auth/login", data);
       set({ authUser: res.data });
-
       toast.success("Logged in successfully");
-
       get().connectSocket();
     } catch (error) {
       toast.error(error.response.data.message);
@@ -102,4 +132,6 @@ export const useAuthStore = create((set, get) => ({
   disconnectSocket: () => {
     if (get().socket?.connected) get().socket.disconnect();
   },
+
+  setNeedsVerification: (val) => set({ needsVerification: val }),
 }));

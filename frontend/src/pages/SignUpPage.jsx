@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 import BorderAnimatedContainer from "../components/BorderAnimatedContainer";
 import {
@@ -7,6 +7,8 @@ import {
   MailIcon,
   UserIcon,
   LoaderIcon,
+  ArrowLeftIcon,
+  ShieldCheckIcon,
 } from "lucide-react";
 import { Link } from "react-router";
 
@@ -16,12 +18,117 @@ function SignUpPage() {
     email: "",
     password: "",
   });
-  const { signup, isSigningUp } = useAuthStore();
+  
+  const [otp, setOtp] = useState("");
+  const [timer, setTimer] = useState(60);
+  const [canResend, setCanResend] = useState(false);
+
+  const { 
+    signup, 
+    isSigningUp, 
+    needsVerification, 
+    setNeedsVerification, 
+    verifyEmail, 
+    isVerifyingEmail, 
+    tempEmail,
+    resendOTP 
+  } = useAuthStore();
+
+  useEffect(() => {
+    let interval;
+    if (needsVerification && timer > 0) {
+      interval = setInterval(() => {
+        setTimer((prev) => prev - 1);
+      }, 1000);
+    } else if (timer === 0) {
+      setCanResend(true);
+    }
+    return () => clearInterval(interval);
+  }, [needsVerification, timer]);
+
+  const handleResend = async () => {
+    setTimer(60);
+    setCanResend(false);
+    await resendOTP();
+  };
+
+  const handleVerifyOTP = async (e) => {
+    e.preventDefault();
+    await verifyEmail(otp);
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     signup(formData);
   };
+
+  if (needsVerification) {
+    return (
+      <div className="w-full flex items-center justify-center p-4 bg-slate-900 min-h-screen">
+        <div className="relative w-full max-w-md">
+          <BorderAnimatedContainer>
+            <div className="p-8 bg-slate-800/10 backdrop-blur-md">
+              <button 
+                onClick={() => setNeedsVerification(false)}
+                className="flex items-center gap-2 text-slate-400 hover:text-slate-200 transition-colors mb-6 text-sm"
+              >
+                <ArrowLeftIcon className="w-4 h-4" /> Back to Signup
+              </button>
+
+              <div className="text-center mb-10">
+                <div className="w-16 h-16 bg-cyan-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <ShieldCheckIcon className="w-8 h-8 text-cyan-400" />
+                </div>
+                <h2 className="text-2xl font-bold text-slate-200 mb-2">Verify Your Email</h2>
+                <p className="text-slate-400 text-sm">
+                  We've sent a 6-digit code to <br />
+                  <span className="text-slate-200 font-medium">{tempEmail}</span>
+                </p>
+              </div>
+
+              <form onSubmit={handleVerifyOTP} className="space-y-6">
+                 <div>
+                    <input
+                      type="text"
+                      maxLength="6"
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, ""))}
+                      className="w-full bg-slate-900 border border-slate-700/50 rounded-xl py-4 text-center text-3xl font-bold tracking-[0.5em] text-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all placeholder:text-slate-700"
+                      placeholder="000000"
+                      required
+                    />
+                 </div>
+
+                 <button
+                    className="auth-btn w-full"
+                    type="submit"
+                    disabled={isVerifyingEmail || otp.length !== 6}
+                  >
+                    {isVerifyingEmail ? (
+                      <LoaderIcon className="w-5 h-5 animate-spin mx-auto text-center" />
+                    ) : (
+                      "Verify & Sign In"
+                    )}
+                  </button>
+              </form>
+
+              <div className="mt-8 text-center">
+                <p className="text-slate-500 text-sm mb-2">Didn't receive the code?</p>
+                <button 
+                  onClick={handleResend}
+                  disabled={!canResend}
+                  type="button"
+                  className={`text-sm font-medium transition-colors ${canResend ? "text-cyan-400 hover:text-cyan-300" : "text-slate-600"}`}
+                >
+                  {canResend ? "Resend Verification Code" : `Resend in ${timer}s`}
+                </button>
+              </div>
+            </div>
+          </BorderAnimatedContainer>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full flex items-center justify-center p-4 bg-slate-900">

@@ -7,11 +7,22 @@ export const useChatStore = create((set, get) => ({
   allContacts: [],
   chats: [],
   messages: [],
+  typingUsers: [],
   activeTab: "chats",
   selectedUser: null,
   isUsersLoading: false,
   isMessagesLoading: false,
+  hasMoreMessages: false,
+  replyingTo: null,
+  searchTerm: "",
+  drafts: {}, // { [userId]: text }
   isSoundEnabled: JSON.parse(localStorage.getItem("isSoundEnabled")) === true,
+
+  setSearchTerm: (term) => set({ searchTerm: term }),
+  setDraft: (userId, text) => set((state) => ({ 
+    drafts: { ...state.drafts, [userId]: text } 
+  })),
+  setReplyingTo: (msg) => set({ replyingTo: msg }),
 
   toggleSound: () => {
     localStorage.setItem("isSoundEnabled", !get().isSoundEnabled);
@@ -45,20 +56,24 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
-  getMessagesByUserId: async (userId) => {
+  getMessagesByUserId: async (userId, page = 1) => {
     set({ isMessagesLoading: true });
     try {
-      const res = await axiosInstance.get(`/message/${userId}`);
-      set({ messages: res.data });
+      const res = await axiosInstance.get(`/message/${userId}?page=${page}`);
+      set((state) => ({ 
+        messages: page === 1 ? res.data : [...res.data, ...state.messages],
+        page: page,
+        hasMoreMessages: res.data.length === 20
+      }));
     } catch (error) {
-      toast.error(error.response?.data?.message || "Something went wrong");
+      toast.error(error.response?.data?.message || "Failed to fetch messages");
     } finally {
       set({ isMessagesLoading: false });
     }
   },
 
   sendMessage: async (messageData) => {
-    const { selectedUser, messages } = get();
+    const { selectedUser, messages, replyingTo } = get();
     const { authUser } = useAuthStore.getState();
 
     const tempId = `temp-${Date.now()}`;
@@ -71,20 +86,111 @@ export const useChatStore = create((set, get) => ({
       image: messageData.image,
       createdAt: new Date().toISOString(),
       isOptimistic: true, // flag to identify optimistic messages (optional)
+      read: false,
+      replyTo: replyingTo ? { ...replyingTo } : null,
     };
-    // immidetaly update the ui by adding the message
-    set({ messages: [...messages, optimisticMessage] });
+      // immediately update the ui by adding the message
+    set((state) => ({ 
+      messages: [...state.messages, optimisticMessage],
+      replyingTo: null
+    }));
 
     try {
+      const payload = { ...messageData, replyTo: replyingTo?._id };
       const res = await axiosInstance.post(
         `/message/send/${selectedUser._id}`,
-        messageData
+        payload
       );
-      set({ messages: messages.concat(res.data) });
+      set((state) => {
+        const newChats = [...state.chats];
+        const chatIndex = newChats.findIndex(c => c._id === selectedUser._id);
+        if (chatIndex !== -1) {
+          const chatToUpdate = { ...newChats[chatIndex], lastMessage: res.data };
+          newChats.splice(chatIndex, 1);
+          newChats.unshift(chatToUpdate);
+        }
+        
+        return { 
+          messages: state.messages.map(msg => msg._id === tempId ? res.data : msg),
+          chats: newChats
+        };
+      });
     } catch (error) {
       // remove optimistic message on failure
-      set({ messages: messages });
+      set((state) => ({ 
+        messages: state.messages.filter(msg => msg._id !== tempId) 
+      }));
       toast.error(error.response?.data?.message || "Something went wrong");
+    }
+  },
+
+  markMessagesAsRead: async (senderId) => {
+    try {
+      await axiosInstance.put(`/message/read/${senderId}`);
+      // Optimistically update UI
+      set((state) => ({
+        messages: state.messages.map((msg) =>
+          msg.senderId === senderId && !msg.read ? { ...msg, read: true } : msg
+        ),
+      }));
+      // Emit socket event to notify sender
+      const socket = useAuthStore.getState().socket;
+      socket.emit("messagesRead", { senderId });
+    } catch (error) {
+      console.error(error);
+    }
+  },
+
+  deleteMessage: async (messageId, forEveryone) => {
+    try {
+      await axiosInstance.delete(`/message/${messageId}`, { data: { forEveryone } });
+      if (forEveryone) {
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg._id === messageId
+              ? { ...msg, isDeletedForEveryone: true, text: "This message was deleted", image: null }
+              : msg
+          ),
+        }));
+      } else {
+        set((state) => ({
+          messages: state.messages.filter((msg) => msg._id !== messageId),
+        }));
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to delete message");
+    }
+  },
+
+  forwardMessages: async (messagesToForward, receiverIds) => {
+    try {
+      const promises = [];
+      receiverIds.forEach((receiverId) => {
+        messagesToForward.forEach((msg) => {
+          promises.push(
+            axiosInstance.post(`/message/send/${receiverId}`, {
+              text: msg.text,
+              image: msg.image,
+            })
+          );
+        });
+      });
+      const results = await Promise.all(promises);
+      
+      const { selectedUser } = get();
+      if (selectedUser && receiverIds.includes(selectedUser._id)) {
+        const newMessagesForCurrentChat = results
+          .map(res => res.data)
+          .filter(msg => msg.receiverId === selectedUser._id || msg.senderId === selectedUser._id);
+          
+        set(state => ({
+          messages: [...state.messages, ...newMessagesForCurrentChat]
+        }));
+      }
+
+      toast.success("Messages forwarded successfully");
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to forward messages");
     }
   },
 
@@ -95,12 +201,28 @@ export const useChatStore = create((set, get) => ({
     const socket = useAuthStore.getState().socket;
 
     socket.on("newMessage", (newMessage) => {
-      const isMessageSentFromSelectedUser =
-        newMessage.senderId === selectedUser._id;
-      if (!isMessageSentFromSelectedUser) return;
+      const isSoundEnabled = get().isSoundEnabled;
 
-      const currentMessages = get().messages;
-      set({ messages: [...currentMessages, newMessage] });
+      set((state) => {
+        const isFromSelected = newMessage.senderId === state.selectedUser?._id;
+        
+        const newChats = [...state.chats];
+        const chatIndex = newChats.findIndex(c => c._id === newMessage.senderId);
+        if (chatIndex !== -1) {
+          const chatToUpdate = { ...newChats[chatIndex], lastMessage: newMessage };
+          newChats.splice(chatIndex, 1);
+          newChats.unshift(chatToUpdate);
+        }
+        
+        const newMessages = isFromSelected ? [...state.messages, newMessage] : state.messages;
+
+        // Mark as read immediately if chat is open
+        if (isFromSelected) {
+          setTimeout(() => get().markMessagesAsRead(newMessage.senderId), 0);
+        }
+
+        return { chats: newChats, messages: newMessages };
+      });
 
       if (isSoundEnabled) {
         const notificationSound = new Audio("/sounds/notification.mp3");
@@ -111,10 +233,50 @@ export const useChatStore = create((set, get) => ({
           .catch((e) => console.log("Audio play failed:", e));
       }
     });
+
+    socket.on("typing", (userId) => {
+      if (userId === selectedUser._id && !get().typingUsers.includes(userId)) {
+        set((state) => ({ typingUsers: [...state.typingUsers, userId] }));
+      }
+    });
+
+    socket.on("stopTyping", (userId) => {
+      set((state) => ({ typingUsers: state.typingUsers.filter((id) => id !== userId) }));
+    });
+
+    socket.on("messagesRead", ({ readerId }) => {
+      if (readerId === selectedUser._id) {
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg.receiverId === readerId ? { ...msg, read: true } : msg
+          ),
+        }));
+      }
+    });
+
+    socket.on("messageDeleted", ({ messageId, forEveryone }) => {
+      if (forEveryone) {
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg._id === messageId
+              ? { ...msg, isDeletedForEveryone: true, text: "This message was deleted", image: null }
+              : msg
+          ),
+        }));
+      } else {
+        set((state) => ({
+          messages: state.messages.filter((msg) => msg._id !== messageId),
+        }));
+      }
+    });
   },
 
   unsubscribeFromMessages: () => {
     const socket = useAuthStore.getState().socket;
     socket.off("newMessage");
+    socket.off("typing");
+    socket.off("stopTyping");
+    socket.off("messagesRead");
+    socket.off("messageDeleted");
   },
 }));

@@ -6,6 +6,10 @@ const userSchema = new mongoose.Schema(
     fullName: { type: String, required: true },
     password: { type: String, required: true, minlength: 6 },
     profilePic: { type: String, default: "" },
+    about: { type: String, default: "I'm using Chatify!" },
+    isVerified: { type: Boolean, default: false },
+    verificationCode: { type: String },
+    verificationCodeExpiresAt: { type: Date },
   },
   { timestamps: true } // createdAt & updatedAt
 );
